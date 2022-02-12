@@ -36,63 +36,70 @@ if Turbostroi and not TURBOSTROI then
             end
         end)
     end)
+    local trainsCachedFunctions = {}
     local id,system,name,index,value
+    local func
     local msg_count = 0
-    local idActionTable = {
-        [1] = function (train)
-            if train.Systems[system] then
-                train.Systems[system][name] = value
-                if train.TriggerTurbostroiInput then train:TriggerTurbostroiInput(system,name,value) end
+    local function firstMethod(train)
+        local sys = train.Systems[system]
+        if sys then
+            sys[name] = value
+            func(train, system, name, value)
+            --train:TriggerTurbostroiInput(system,name,value)
+        end
+    end
+    local function secondMethod(train)
+        if index == 0 and name ~= "bass" then index = nil end
+        if value == 0 and name ~= "bass" then value = nil end
+        if name == "" then name = nil end
+        train:PlayOnce(system,name,index,value)
+    end
+    local function thirdMethod(train)
+        if name == "on" then
+            dataCache[train]["wiresW"][index] = value
+            if not train.TrainWireWritersID[index] then train.TrainWireWritersID[index] = true end
+            train.TrainWireTurbostroi[index] = value
+            func(train, "TrainWire", index, value)
+            --train:TriggerTurbostroiInput("TrainWire",index,value)
+        else
+            --print("[!]Wire "..index.." stop update!")
+            dataCache[train]["wiresW"][index] = nil
+        end
+    end
+    local function chetireMethod(train)
+        local sys = train.Systems[system]
+        if sys then
+            sys:TriggerInput(name,value)
+        end
+    end
+    local function pyatMethod(train)
+    end
+    local function shestMethod(train)
+        if IsValid(Player(index)) then
+            if value==0 then
+                Player(index):PrintMessage( HUD_PRINTCONSOLE, "--START" )
             end
-        end,
-        [2] = function (train)
-            if index == 0 and name ~= "bass" then index = nil end
-            if value == 0 and name ~= "bass" then value = nil end
-            if name == "" then name = nil end
-                --net.WriteString(name)
-            train:PlayOnce(system,name,index,value)
-        end,
-        [3] = function (train)
-            if name == "on" then
-                --print("[!]Wire "..index.." starts update! Value "..value)
-                dataCache[train]["wiresW"][index] = value
-                --train:WriteTrainWire(index,value)
-                if not train.TrainWireWritersID[index] then train.TrainWireWritersID[index] = true end
-                train.TrainWireTurbostroi[index] = value
-                if train.TriggerTurbostroiInput then train:TriggerTurbostroiInput("TrainWire",index,value) end
-            else
-                --print("[!]Wire "..index.." stop update!")
-                dataCache[train]["wiresW"][index] = nil
-            end
-        end,
-        [4] = function (train)
-            if train.Systems[system] then
-                train.Systems[system]:TriggerInput(name,value)
-            end
-        end,
-        [5] = function (train)
-            for twid,value in pairs(dataCache[train]["wiresW"]) do
-                --train:WriteTrainWire(twid,value)
-            end
-        end,
-        [6] = function (train)
-            if IsValid(Player(index)) then
-                if value==0 then
-                    Player(index):PrintMessage( HUD_PRINTCONSOLE, "--START" )
-                    -- print("--START")
-                end
-                Player(index):PrintMessage( HUD_PRINTCONSOLE, system )
-                -- print(system)
-            end
-        end,
-    }
+            Player(index):PrintMessage( HUD_PRINTCONSOLE, system )
+        end
+    end
+    local pairs = pairs
+    local type = type
+    local math_floor = math.floor
     local function updateTrains(trains)
         --local recvMessage = Turbostroi.RecvMessage
         -- Get data packets from simulation
         for train in pairs(trains) do
+            if not trainsCachedFunctions[train] then 
+                trainsCachedFunctions[train] = {
+                    TriggerTurbostroiInput = train.TriggerTurbostroiInput,
+                    ReadTrainWire = train.ReadTrainWire
+                }
+            end
+
             if not dataCache[train] then
                 if not SendMessage(train,5,"","",0,0) then return end
                 dataCache[train] = {wiresW = {}}
+                dataCache_a = dataCache[train]
 
                 for sys_name,system in pairs(train.Systems) do
                     if system.OutputsList and system.DontAccelerateSimulation then
@@ -100,8 +107,8 @@ if Turbostroi and not TURBOSTROI then
                             local value = system[name] or 0
                             if type(value) == "boolean" then value = value and 1 or 0 end
                             if type(value) == "number" then
-                                if not dataCache[train][sys_name] then dataCache[train][sys_name] = {} end
-                                dataCache[train][sys_name][name] = math.Round(value)
+                                if not dataCache_a[sys_name] then dataCache_a[sys_name] = {} end
+                                dataCache_a[sys_name][name] = math_floor(value)
                             end
                         end
                     end
@@ -110,38 +117,55 @@ if Turbostroi and not TURBOSTROI then
             msg_count = ReadAvailable(train)
             for _ = 1, msg_count do
                 id,system,name,index,value = RecvMessage(train)
+                func = trainsCachedFunctions[train]["TriggerTurbostroiInput"]
 
-                idActionTable[id](train)
-                messageCounter = messageCounter + 1
-
+                if id == 1 then
+                    firstMethod(train)
+                elseif id == 2 then
+                    secondMethod(train)
+                elseif id == 3 then
+                    thirdMethod(train)
+                elseif id == 4 then
+                    chetireMethod(train)
+                elseif id == 5 then
+                    pyatMethod(train)
+                elseif id == 6 then
+                    shestMethod(train)
+                end
             end
         end
         -- Send train wire values
         -- Output all system values
         for train in pairs(trains) do
-            if train.ReadTrainWire then
-                for i in pairs(train.TrainWires) do
-                    if not dataCache[train]["wires"] then dataCache[train]["wires"] = {} end
-                    if dataCache[train]["wires"][i] ~= train:ReadTrainWire(i) then
-                        if SendMessage(train,3,"","",i,train:ReadTrainWire(i)) then
-                            dataCache[train]["wires"][i] = train:ReadTrainWire(i)
-                        end
+            if not dataCache[train]["wires"] then dataCache[train]["wires"] = {} end
+            local dataCache_a = dataCache[train]["wires"]
+            --local readTrainWire = trainsCachedFunctions[train]["ReadTrainWire"]
+            local trainWires = train.TrainWires
+
+            for i in pairs(trainWires) do
+                --local wire = train:ReadTrainWire(i)
+                local wire = trainWires[i] or 0--readTrainWire(train, i)
+                if dataCache_a[i] ~= wire then
+                    if SendMessage(train,3,"","",i,wire) then
+                        dataCache_a[i] = wire
                     end
                 end
-                for sys_name,system in pairs(train.Systems) do
-                    if system.OutputsList and system.DontAccelerateSimulation then
-                        for _,name in pairs(system.OutputsList) do
-                            local value = system[name] or 0
-                            if type(value) == "boolean" then
-                                value = value and 1 or 0
-                            end
-                            if type(value) == "number" then
-                                value = math.Round(value,1)
-                                if not dataCache[train][sys_name] then dataCache[train][sys_name] = {} end
-                                if dataCache[train][sys_name][name] ~= value then
-                                    if SendMessage(train,1,sys_name,name,0,value) then
-                                        dataCache[train][sys_name][name] = value
-                                    end
+            end
+            for sys_name,system in pairs(train.Systems) do
+                if not dataCache[train][sys_name] then dataCache[train][sys_name] = {} end
+                local dataCache_b = dataCache[train][sys_name]
+
+                if system.OutputsList and system.DontAccelerateSimulation then
+                    for _,name in pairs(system.OutputsList) do
+                        local value = system[name] or 0
+                        if type(value) == "boolean" then
+                            value = value and 1 or 0
+                        end
+                        if type(value) == "number" then
+                            value = math_floor(value,1)
+                            if dataCache_b[name] ~= value then
+                                if SendMessage(train,1,sys_name,name,0,value) then
+                                    dataCache_b[name] = value
                                 end
                             end
                         end
