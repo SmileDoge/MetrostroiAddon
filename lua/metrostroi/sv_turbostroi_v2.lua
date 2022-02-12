@@ -22,6 +22,7 @@ if Turbostroi and not TURBOSTROI then
         end
         if turbostroiTrains[ent] then
             turbostroiTrains[ent] = nil
+            trainsCachedFunctions[ent] = nil
         end
     end)
     for k,ent in pairs(ents.GetAll()) do
