@@ -57,7 +57,7 @@ ENT.SoundNames["brake_squeal2"]       = "subway_trains/bogey/brake_squeal2.wav"
 
 ENT.EngineSNDConfig = {
     {
-        {"ted1_703" ,08,00,16,1},
+        {"ted1_703" ,08,00  ,16,1},
         {"ted2_703" ,16,08-4,24,1},
         {"ted3_703" ,24,16-4,32,1},
         {"ted4_703" ,32,24-4,40,1},
@@ -70,7 +70,7 @@ ENT.EngineSNDConfig = {
         {"ted11_703",88,80-4   ,1},
     },
     {
-        {"ted1_717" ,08,00,16,1},
+        {"ted1_717" ,08,00  ,16,1},
         {"ted2_717" ,16,08-4,24,1},
         {"ted3_717" ,24,16-4,32,1},
         {"ted4_717" ,32,24-4,40,1},
@@ -82,7 +82,7 @@ ENT.EngineSNDConfig = {
         {"ted10_717",80,72-4   ,1},
     },
     {
-        {"ted1_720" ,08,00,16,1*0.4},
+        {"ted1_720" ,08,00  ,16,1*0.4},
         {"ted2_720" ,16,08-4,24,1*0.43},
         {"ted3_720" ,24,16-4,32,1*0.46},
         {"ted4_720" ,32,24-4,40,1*0.49},
@@ -95,7 +95,7 @@ ENT.EngineSNDConfig = {
         {"ted11_720",88,80-4   ,1*0.7},
     },
 }
-
+local Audio = Metrostroi.Audio
 --------------------------------------------------------------------------------
 function ENT:ReinitializeSounds()
     -- Remove old sounds
@@ -105,19 +105,48 @@ function ENT:ReinitializeSounds()
         end
     end
 
-    -- Create sounds
+    for k,v in pairs(self.SoundNames) do
+        Audio.PrecacheSound(v, true)
+    end
+
     self.Sounds = {}
     for k,v in pairs(self.SoundNames) do
-        --[[local e = self
-        if (k == "brake3a") and IsValid(self:GetNW2Entity("TrainWheels")) then
-            e = self:GetNW2Entity("TrainWheels")
-        end]]
-        self.Sounds[k] = CreateSound(self, Sound(v))
+
+        local snd = Audio.CreateSound(v)
+        snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), vector_origin)
+        snd:Pause()
+        self.Sounds[k] = snd
+        --self.Sounds[k] = CreateSound(self, Sound(v))
     end
 
     self.MotorSoundType = nil
 end
 function ENT:SetSoundState(sound,volume,pitch,name,level )
+    local snd = self.Sounds[sound]
+    
+    if not IsValid(snd) then return end
+
+    if volume <= 0 or pitch <= 0 then
+        snd:SetPitch(0)
+        snd:SetVolume(0)
+        snd:Pause()
+
+        return
+    end
+
+    if snd:IsActive() == 3 then snd:Play() end
+
+    local vol = math.max(0,math.min(255,2.55*volume)) + (0.001/2.55) + (0.001/2.55)*0.5
+
+    vol = vol * 75
+
+    print(vol)
+
+    snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), vector_origin)
+    snd:SetPitch(1)
+    snd:SetVolume(vol)
+
+    --[[
     if not self.Sounds[sound] then
         if self.SoundNames[name or sound] and (not wheels or IsValid(self:GetNW2Entity("TrainWheels"))) then
             self.Sounds[sound] = CreateSound(wheels and self:GetNW2Entity("TrainWheels") or self, Sound(self.SoundNames[name or sound]))
@@ -133,7 +162,7 @@ function ENT:SetSoundState(sound,volume,pitch,name,level )
         end
         return
     end
-    local pch = math.floor(math.max(0,math.min(255,100*pitch)) + math.random())
+    local pch = math.floor(math.max(0,math.min(255,100*pitch)))
     local vol = math.max(0,math.min(255,2.55*volume)) + (0.001/2.55) + (0.001/2.55)*math.random()
     if name~=false and not snd:IsPlaying() or name==false and snd:GetVolume()==0 then
     --if not self.Playing[sound] or name~=false and not snd:IsPlaying() or name==false and snd:GetVolume()==0 then
@@ -143,10 +172,11 @@ function ENT:SetSoundState(sound,volume,pitch,name,level )
         end
         snd:PlayEx(vol,pch+1)
     end
-    --snd:SetDSP(22)
+    snd:SetDSP(1)
     snd:ChangeVolume(vol,0)
     snd:ChangePitch(pch+1,0)
     --snd:SetDSP(22)
+    ]]
 end
 
 function ENT:Initialize()
@@ -200,7 +230,8 @@ function ENT:Think()
     if not self.DisableEngines and self.MotorSoundArr then
         self.MotorPowerSound = math.Clamp(self.MotorPowerSound + (motorPower - self.MotorPowerSound)*self.DeltaTime*3,-1.5,1.5)
         local t = RealTime()*2.5
-        local modulation = math.max(0,(speed-60)/30)*0.7+(0.2 + 1.0*math.max(0,0.2+math.sin(t)*math.sin(t*3.12)*math.sin(t*0.24)*math.sin(t*4.0)))*math.Clamp((speed-15)/60,0,1)
+        local modulation = math.max(0,(speed-60)/30) * 0.7 + (0.2 + 1.0*math.max(0,0.2+math.sin(t)*math.sin(t*3.12)*math.sin(t*0.24)*math.sin(t*4.0))) * math.Clamp((speed-15)/60,0,1)
+
         local mod2 = 1.0-math.min(1.0,(math.abs(self.MotorPowerSound)/0.1))
         if (speed > -1.0) and (math.abs(self.MotorPowerSound)+modulation) >= 0.0 then
             --local startVolRamp = 0.2 + 0.8*math.max(0.0,math.min(1.0,(speed - 1.0)*0.5))
@@ -446,20 +477,20 @@ net.Receive("metrostroi_bogey_contact",function()
     local PantNum = net.ReadUInt(1)+1
     local PantPos = net.ReadVector()
     local Spark = net.ReadUInt(1) > 0
-    
+
     local dt = CurTime() - ent.PlayTime[PantNum]
     ent.PlayTime[PantNum] = CurTime()
-    
+
     local volume = 0.53
     if dt < 1.0 then volume = 0.43 end
     sound.Play("subway_trains/bogey/tr_"..math.random(1,5)..".wav",ent:LocalToWorld(PantPos),65,math.random(90,120),volume)
-    
+
     if not Spark then return end
     local effectdata = EffectData()
     effectdata:SetOrigin(ent:LocalToWorld(PantPos))
     effectdata:SetNormal(Vector(0,0,-1))
     util.Effect("stunstickimpact", effectdata, true, true)
-    
+
     local light = ents.CreateClientside("gmod_train_dlight")
     light:SetPos(effectdata:GetOrigin())
     light:SetDColor(Color(100,220,255))
