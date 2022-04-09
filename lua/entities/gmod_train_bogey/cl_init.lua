@@ -104,79 +104,85 @@ function ENT:ReinitializeSounds()
             v:Stop()
         end
     end
-
-    for k,v in pairs(self.SoundNames) do
-        Audio.PrecacheSound(v, true)
-    end
-
     self.Sounds = {}
     for k,v in pairs(self.SoundNames) do
-
-        local snd = Audio.CreateSound(v)
-        snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), vector_origin)
-        snd:Pause()
-        self.Sounds[k] = snd
-        --self.Sounds[k] = CreateSound(self, Sound(v))
+        if Audio.Status then
+            Audio.PrecacheSound(v, true)
+            local snd = Audio.CreateSound(v)
+            snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), vector_origin)
+            snd:Pause()
+            self.Sounds[k] = snd
+        else
+            self.Sounds[k] = CreateSound(self, Sound(v))
+        end
     end
 
     self.MotorSoundType = nil
 end
 function ENT:SetSoundState(sound,volume,pitch,name,level )
-    local snd = self.Sounds[sound]
-    
-    if not IsValid(snd) then return end
+    if Audio.Status then
+        local snd = self.Sounds[sound]
+        
+        if not IsValid(snd) then
+            if not self.SoundNames[sound] then return end
 
-    if volume <= 0 or pitch <= 0 then
-        snd:SetPitch(0)
-        snd:SetVolume(0)
-        snd:Pause()
+            snd = Audio.CreateSound(self.SoundNames[sound])
+            snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), vector_origin)
+            snd:Play()
+            self.Sounds[sound] = snd
+        end
 
-        return
-    end
+        if (volume <= 0) or (pitch <= 0) then
+            snd:SetPitch(0)
+            snd:SetVolume(0)
+            snd:Pause()
 
-    if snd:IsActive() == 3 then snd:Play() end
-
-    local vol = math.max(0,math.min(255,2.55*volume)) + (0.001/2.55) + (0.001/2.55)*0.5
-
-    vol = vol * 75
-
-    print(vol)
-
-    snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), vector_origin)
-    snd:SetPitch(1)
-    snd:SetVolume(vol)
-
-    --[[
-    if not self.Sounds[sound] then
-        if self.SoundNames[name or sound] and (not wheels or IsValid(self:GetNW2Entity("TrainWheels"))) then
-            self.Sounds[sound] = CreateSound(wheels and self:GetNW2Entity("TrainWheels") or self, Sound(self.SoundNames[name or sound]))
-        else
             return
         end
-    end
-    local snd = self.Sounds[sound]
-    if (volume <= 0) or (pitch <= 0) then
-        if snd:IsPlaying() then
-            snd:ChangeVolume(0.0,0)
-            snd:Stop()
+
+        if snd:IsActive() == 3 then snd:Play() end
+
+        local vol = math.max(0,math.min(255,2.55*volume)) + (0.001/2.55) + (0.001/2.55)*0.5
+
+        vol = vol * 80
+
+        local pch = math.floor(math.max(0,math.min(255,100*pitch)))
+        
+        snd:SetPosition(self:GetPos(), self:GetAngles():Forward(), self:GetVelocity())
+        snd:SetPitch(pitch)
+        snd:SetVolume(vol)
+    else
+
+        if not self.Sounds[sound] then
+            if self.SoundNames[name or sound] and (not wheels or IsValid(self:GetNW2Entity("TrainWheels"))) then
+                self.Sounds[sound] = CreateSound(wheels and self:GetNW2Entity("TrainWheels") or self, Sound(self.SoundNames[name or sound]))
+            else
+                return
+            end
         end
-        return
-    end
-    local pch = math.floor(math.max(0,math.min(255,100*pitch)))
-    local vol = math.max(0,math.min(255,2.55*volume)) + (0.001/2.55) + (0.001/2.55)*math.random()
-    if name~=false and not snd:IsPlaying() or name==false and snd:GetVolume()==0 then
-    --if not self.Playing[sound] or name~=false and not snd:IsPlaying() or name==false and snd:GetVolume()==0 then
-        if level and snd:GetSoundLevel() ~= level then
-            snd:Stop()
-            snd:SetSoundLevel(level)
+        local snd = self.Sounds[sound]
+        if (volume <= 0) or (pitch <= 0) then
+            if snd:IsPlaying() then
+                snd:ChangeVolume(0.0,0)
+                snd:Stop()
+            end
+            return
         end
-        snd:PlayEx(vol,pch+1)
+        local pch = math.floor(math.max(0,math.min(255,100*pitch)))
+        local vol = math.max(0,math.min(255,2.55*volume)) + (0.001/2.55) + (0.001/2.55)*math.random()
+        if name~=false and not snd:IsPlaying() or name==false and snd:GetVolume()==0 then
+        --if not self.Playing[sound] or name~=false and not snd:IsPlaying() or name==false and snd:GetVolume()==0 then
+            if level and snd:GetSoundLevel() ~= level then
+                snd:Stop()
+                snd:SetSoundLevel(level)
+            end
+            snd:PlayEx(vol,pch+1)
+        end
+        --snd:SetDSP(1)
+        snd:ChangeVolume(vol,0)
+        snd:ChangePitch(pch+1,0)
+        --snd:SetDSP(22)
     end
-    snd:SetDSP(1)
-    snd:ChangeVolume(vol,0)
-    snd:ChangePitch(pch+1,0)
-    --snd:SetDSP(22)
-    ]]
 end
 
 function ENT:Initialize()
@@ -229,8 +235,17 @@ function ENT:Think()
 
     if not self.DisableEngines and self.MotorSoundArr then
         self.MotorPowerSound = math.Clamp(self.MotorPowerSound + (motorPower - self.MotorPowerSound)*self.DeltaTime*3,-1.5,1.5)
-        local t = RealTime()*2.5
-        local modulation = math.max(0,(speed-60)/30) * 0.7 + (0.2 + 1.0*math.max(0,0.2+math.sin(t)*math.sin(t*3.12)*math.sin(t*0.24)*math.sin(t*4.0))) * math.Clamp((speed-15)/60,0,1)
+        local t = RealTime()*1
+        --local modulation = math.max(0,(speed-60)/30) * 0.7 + (0.2 + 1.0*math.max(0,0.2+math.sin(t)*math.sin(t*3.12)*math.sin(t*0.24)*math.sin(t*4.0))) * math.Clamp((speed-15)/60,0,1)
+        
+        local k = 1//math.sin(t)*math.sin(t*3.12)*math.sin(t*0.24)*math.sin(t*4.0)
+        local modulation = (
+                math.max(0, (speed - 60) / 30) * 0.7
+            +
+                (0.2 + 1.0 * math.max(0, 0.2 + k ))
+                *
+                math.Clamp(( speed - 15) / 60, 0, 1)
+        )
 
         local mod2 = 1.0-math.min(1.0,(math.abs(self.MotorPowerSound)/0.1))
         if (speed > -1.0) and (math.abs(self.MotorPowerSound)+modulation) >= 0.0 then

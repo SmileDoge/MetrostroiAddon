@@ -481,7 +481,7 @@ function ENT:SpawnCSEnt(k,override)
         cent.CalcAbsolutePosition = function(ent,pos,ang)
             for k,v in pairs(ent.BASSSounds) do
                 if IsValid(v) and v:GetState() ~= GMOD_CHANNEL_STOPPED then
-                    v:SetPos(pos,ang:Forward())
+                    v:SetPos(pos,ang:Forward(),self:GetVelocity())
                 end
             end
         end
@@ -891,9 +891,9 @@ function ENT:CalcAbsolutePosition(pos, ang)
                     local tbl = self.SoundPositions[k]
                     if tbl then
                         local lpos,lang = LocalToWorld(tbl[3],Angle(0,0,0),pos,ang)
-                        v:SetPos(lpos,ang:Forward())
+                        v:SetPos(lpos, ang:Forward(), self:GetVelocity())
                     else
-                        v:SetPos(pos)
+                        v:SetPos(pos, nil, self:GetVelocity())
                     end
                     continue
                 end
@@ -907,7 +907,7 @@ function ENT:CalcAbsolutePosition(pos, ang)
                 if snd:GetState() == GMOD_CHANNEL_PLAYING then
                     if tbl then
                         local lpos,lang = LocalToWorld(tbl[3],Angle(0,0,0),pos,ang)
-                        snd:SetPos(lpos,ang:Forward())
+                        snd:SetPos(lpos,ang:Forward(), self:GetVelocity())
                     end
                 end
             end

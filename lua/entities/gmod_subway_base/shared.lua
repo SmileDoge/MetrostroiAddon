@@ -217,11 +217,15 @@ local function PauseBASS(snd)
     snd:Pause()
     snd:SetTime(0)
 end
+local Audio = Metrostroi.Audio
+
 function ENT:CreateBASSSound(name,callback,noblock,onerr)
     if self.StopSounds or not self.ClientPropsInitialized or self.CreatingCSEnts then return end
     --if self.SoundSpawned and name:find(".wav") then return end
     --self.SoundSpawned = true
-    sound.PlayFile(Sound("sound/"..name), "3d noplay mono"..(noblock and " noblock" or ""), function( snd,err,errName )
+    Audio.PrecacheSound("sound/"..name, true)
+
+    Audio.CreateSoundOld("sound/"..name, "3d noplay mono"..(noblock and " noblock" or ""), function( snd,err,errName )
         if not IsValid(self) then destroySound(snd) return end
         if err then
             self:DestroySound(snd)
@@ -258,9 +262,9 @@ end
 
 function ENT:SetBASSPos(snd,tbl)
     if tbl then
-        snd:SetPos(self:LocalToWorld(tbl[3]),self:GetAngles():Forward())
+        snd:SetPos(self:LocalToWorld(tbl[3]),self:GetAngles():Forward(), self:GetVelocity())
     else
-        snd:SetPos(self:GetPos())
+        snd:SetPos(self:GetPos(), nil, self:GetVelocity())
     end
 end
 function ENT:SetBassParameters(snd,pitch,volume,tbl,looping,spec)
