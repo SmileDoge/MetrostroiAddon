@@ -35,6 +35,8 @@ end
 if bass_loaded then
     print("Metrostroi: Extended Audio enabled!")
 
+    local maxchans = CreateClientConVar("metrostroi_audio_max_channels", "100", true, false, "Max channels per sample (per file)")
+
     function Metrostroi.Audio.PrecacheSound(path, loop, flags)
 
         if not string.StartWith(path, "sound/") then path = "sound/" .. path end
@@ -62,7 +64,7 @@ if bass_loaded then
         if handle ~= 0 then
             Metrostroi.Audio.PrecachedSamples[path_crc] = handle
             local info = BASS.SampleGetInfo(handle)
-            info.max = 100
+            info.max = maxchans:GetInt()
             BASS.SampleSetInfo(handle, info)
 
             PrintTable(BASS.SampleGetInfo(handle))
@@ -679,7 +681,44 @@ if bass_loaded then
         cb(snd)
     end
 
-    timer.Create("Metrostroi-Audio-Free-Invalid-Channels", 10, 0, function()
+    local rollf = CreateClientConVar("metrostroi_audio_rollf", "1", true, false, "See https://www.un4seen.com/doc/#bass/BASS_Set3DFactors.html")
+    local doppf = CreateClientConVar("metrostroi_audio_doppf", "1", true, false, "See https://www.un4seen.com/doc/#bass/BASS_Set3DFactors.html")
+    
+    local distf = BASS.Get3DFactors()
+
+    BASS.Set3DFactors(distf, rollf:GetFloat(), doppf:GetFloat())
+
+    cvars.AddChangeCallback("metrostroi_audio_max_channels", function()
+        Metrostroi.Audio.Print("To apply the settings, write 'metrostroi_audio_clear_cache'")
+    end)
+
+    cvars.AddChangeCallback("metrostroi_audio_rollf", function(_, _, val)
+        local distf, rollf, doppf = BASS.Get3DFactors()
+
+        local ret = BASS.Set3DFactors(distf, val, doppf)
+
+        if ret then
+            Metrostroi.Audio.Print("Rollof factor setted!")
+        else
+            local code = BASS.ErrorGetCode()
+            Metrostroi.Audio.PrintError("Rollof factof error!: %d, %s", code, BASS.ErrorGetString(code))
+        end
+    end)
+
+    cvars.AddChangeCallback("metrostroi_audio_doppf", function(_, _, val)
+        local distf, rollf, doppf = BASS.Get3DFactors()
+
+        local ret = BASS.Set3DFactors(distf, rollf, val)
+
+        if ret then
+            Metrostroi.Audio.Print("Doppler factor setted!")
+        else
+            local code = BASS.ErrorGetCode()
+            Metrostroi.Audio.PrintError("Doppler factof error!: %d, %s", code, BASS.ErrorGetString(code))
+        end
+    end)
+
+    local function CleanupChannels()
         for k, v in pairs(Metrostroi.Audio.Channels) do
             if not v:IsValid() then
                 if v.Stop then v:Stop() elseif v.Free then v:Free() end
@@ -687,7 +726,9 @@ if bass_loaded then
                 Metrostroi.Audio.Channels[k] = nil
             end
         end
-    end)
+    end
+
+    timer.Create("Metrostroi-Audio-Free-Invalid-Channels", 10, 0, CleanupChannels)
 
     concommand.Add("metrostroi_audio_stopall", function()
         for k, v in pairs(Metrostroi.Audio.Channels) do
@@ -731,7 +772,7 @@ if bass_loaded then
 
         vel = LerpVector(easing(FrameTime()), vel, newvel)
 
-        BASS.Set3DPosition(pos, vel, front, up)
+        BASS.Set3DPosition(pos, newvel, front, up)
         BASS.Apply3D()
     end)
 else
