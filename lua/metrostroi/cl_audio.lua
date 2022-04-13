@@ -8,7 +8,6 @@ Metrostroi.Audio.NeedPrecache = false
 Metrostroi.Audio.PrecachedSamples = Metrostroi.Audio.PrecachedSamples or {}
 Metrostroi.Audio.Channels = Metrostroi.Audio.Channels or {}
 
-local FL = BASS.F
 
 function Metrostroi.Audio.PrintError(str, ...)
     local name = debug.getinfo(2, "n").name or "NO NAME FUNC"
@@ -33,6 +32,7 @@ local function crc(str)
 end
 
 if bass_loaded then
+    local FL = BASS.F
     print("Metrostroi: Extended Audio enabled!")
 
     local maxchans = CreateClientConVar("metrostroi_audio_max_channels", "100", true, false, "Max channels per sample (per file)")
