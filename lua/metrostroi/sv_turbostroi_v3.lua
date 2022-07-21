@@ -29,11 +29,17 @@
 - Turbostroi.Version -> string
 
 ---- Global Functions
-- Turbostroi.InitializeTrain(id: i32, func: function) -> void
+--- From DLL
+- Turbostroi.InitializeTrain(id: i32, code: string) -> void
 - Turbostroi.DeinitializeTrain(id: i32) -> void
-- Turbostroi.CreateMessage(size: usize) -> Msg or error : Maximum size is 1 MB
+- Turbostroi.CreateMessage(size: usize) -> Msg or error
 - Turbostroi.SendMessage(msg: Msg, target_id: i32) -> void
 - Turbostroi.RecvMessage(target_id: i32) -> Msg or void : returns void if queue is empty
+- Turbostroi.SetAffinityMask(mask: usize) -> void
+
+--- From Lua
+
+- Turbostroi.AddCustomMessageType(id: number, func: function) -> void : add custom type for receive message from thread
 
 ---- Structs
 
@@ -79,7 +85,6 @@
 - SendMessage(msg: Msg) -> void
 - RecvMessage() -> Msg or void
 - SetAffinityMask(mask: usize) -> void
-- GetAffinityMask() -> usize
 
 -------- Messages ID
 
@@ -107,16 +112,19 @@
 if Turbostroi and not Turbostroi.Version then return end
 
 if not TURBOSTROI then
+    if Turbostroi.Version ~= "3.1.0" then return end
+
     local FPS = math.Round(1000*engine.TickInterval())
 
-    -- TS_filesCache = TS_filesCache or {}
-    -- TS_loadSystem = TS_loadSystem or {}
-    -- TS_registeredSystem = TS_registeredSystem or {}
-    -- TS_turbostroiTrains = TS_turbostroiTrains or {}
-    local TS_filesCache = {}
-    local TS_loadSystem = {}
-    local TS_registeredSystem = {}
-    local TS_turbostroiTrains = {}
+    TS_filesCache = TS_filesCache or {}
+    TS_loadSystem = TS_loadSystem or {}
+    TS_registeredSystem = TS_registeredSystem or {}
+    TS_turbostroiTrains = TS_turbostroiTrains or {}
+    TS_messageTypes = TS_messageTypes or {}
+    -- local TS_filesCache = {}
+    -- local TS_loadSystem = {}
+    -- local TS_registeredSystem = {}
+    -- local TS_turbostroiTrains = {}
 
     Turbostroi.SetFPSSimulation(FPS)
 
@@ -127,54 +135,61 @@ if not TURBOSTROI then
     local SendMessage = Turbostroi.SendMessage
     local RecvMessage = Turbostroi.RecvMessage
 
-    local localize_msg = Turbostroi.CreateMessage(1)
-    local mt = debug.getmetatable(localize_msg)
-    
-    local msg_readu8  = mt.__index(localize_msg, "ReadUInt8")
-    local msg_readu16 = mt.__index(localize_msg, "ReadUInt16")
-    local msg_readu32 = mt.__index(localize_msg, "ReadUInt32")
-    
-    local msg_readi8  = mt.__index(localize_msg, "ReadInt8")
-    local msg_readi16 = mt.__index(localize_msg, "ReadInt16")
-    local msg_readi32 = mt.__index(localize_msg, "ReadInt32")
+    local temp_msg = Turbostroi.CreateMessage(1)
 
-    local msg_readfloat = mt.__index(localize_msg, "ReadFloat")
-    local msg_readdata = mt.__index(localize_msg, "ReadData")
+    temp_msg = nil
 
-    local msg_writeu8  = mt.__index(localize_msg, "WriteUInt8")
-    local msg_writeu16 = mt.__index(localize_msg, "WriteUInt16")
-    local msg_writeu32 = mt.__index(localize_msg, "WriteUInt32")
+    local mt = debug.getregistry()["msgts"]
     
-    local msg_writei8  = mt.__index(localize_msg, "WriteInt8")
-    local msg_writei16 = mt.__index(localize_msg, "WriteInt16")
-    local msg_writei32 = mt.__index(localize_msg, "WriteInt32")
+    local msg_readu8  = mt["ReadUInt8"]
+    local msg_readu16 = mt["ReadUInt16"]
+    local msg_readu32 = mt["ReadUInt32"]
     
-    local msg_writefloat = mt.__index(localize_msg, "WriteFloat")
-    local msg_writedata = mt.__index(localize_msg, "WriteData")
+    local msg_readi8  = mt["ReadUInt8"]
+    local msg_readi16 = mt["ReadUInt16"]
+    local msg_readi32 = mt["ReadUInt32"]
 
-    local msg_seek = mt.__index(localize_msg, "Seek")
-    local msg_tell = mt.__index(localize_msg, "Tell")
+    local msg_readfloat = mt["ReadFloat"]
+    local msg_readdata = mt["ReadData"]
 
-    localize_msg = nil
-    collectgarbage()
+    local msg_writeu8  = mt["WriteUInt8"]
+    local msg_writeu16 = mt["WriteUInt16"]
+    local msg_writeu32 = mt["WriteUInt32"]
+    
+    local msg_writei8  = mt["WriteInt8"]
+    local msg_writei16 = mt["WriteInt16"]
+    local msg_writei32 = mt["WriteInt32"]
+    
+    local msg_writefloat = mt["WriteFloat"]
+    local msg_writedata = mt["WriteData"]
+
+    local msg_seek = mt["Seek"]
+    local msg_tell = mt["Tell"]
 
     local dataCache = {{}, {}}
 
     local cacheEnabled = CreateConVar("turbostroi_caching_enabled", "1", FCVAR_ARCHIVE, "Turbostroi file caching")
-    local train_mask = CreateConVar("turbostroi_train_cores", "254", bit.bor(FCVAR_ARCHIVE,FCVAR_NEVER_AS_STRING) , "Train thread affinity mask")
+    local train_mask = CreateConVar("turbostroi_train_cores", "7", bit.bor(FCVAR_ARCHIVE,FCVAR_NEVER_AS_STRING) , "Train thread affinity mask")
+    local srcds_mask = CreateConVar("turbostroi_main_cores", "8", bit.bor(FCVAR_ARCHIVE,FCVAR_NEVER_AS_STRING) , "Main server (srcds) thread affinity mask")
+
+    local function printTurbostroi(str)
+        print("Metrostroi: Turbostroi V3 - " .. str)
+    end
 
     cvars.AddChangeCallback("turbostroi_train_cores", function(name, old, new)
         for k, v in pairs(TS_turbostroiTrains) do
             local affinity = CreateMessage(32)
             affinity:WriteUInt8(102)
-            affinity:WriteUInt32(tonumber(new) or 254)
-            SendMessage(affinity, v:EntIndex())
+            affinity:WriteUInt32(tonumber(new) or 7)
+            SendMessage(affinity, k)
         end
     end)
 
-    local function printTurbostroi(str)
-        print("Metrostroi: Turbostroi V3 - " .. str)
-    end
+    cvars.AddChangeCallback("turbostroi_main_cores", function(name, old, new)
+        printTurbostroi("New affinity mask = " .. new)
+        Turbostroi.SetAffinityMask(tonumber(new))
+    end)
+    Turbostroi.SetAffinityMask(srcds_mask:GetInt() or 8)
 
     concommand.Add("turbostroi_clear_cache", function(ply)
         if IsValid(ply) then return end
@@ -189,13 +204,19 @@ if not TURBOSTROI then
             if not str then
                 error("Metrostroi: Turbostroi - File not found! ( " .. filename .. " )")
             end
-
+            
             if cacheEnabled:GetBool() then
                 TS_filesCache[filename] = {data = str, size = file.Size(filename, "LUA")}
+            else
+                return str, file.Size(filename, "LUA")
             end
         end
 
         return TS_filesCache[filename].data, TS_filesCache[filename].size
+    end
+
+    function Turbostroi.AddCustomMessageType(num, func)
+        TS_messageTypes[num] = func
     end
 
     function Turbostroi.RegisterSystem(name, filename)
@@ -299,7 +320,7 @@ if not TURBOSTROI then
         
         local affinity = CreateMessage(32)
         affinity:WriteUInt8(102)
-        affinity:WriteUInt32(train_mask:GetInt() or 254)
+        affinity:WriteUInt32(train_mask:GetInt() or 7)
         SendMessage(affinity, id)
 
         TS_turbostroiTrains[id] = true
@@ -335,12 +356,7 @@ if not TURBOSTROI then
 
                 train.Systems[sys][var] = val
 
-                if train.TriggerTurbostroiInput then train:TriggerTurbostroiInput(system,name,value) end
-                -- if var == "Value" then
-                --     if tableHasValue(train.SyncTable,sys) then
-                --         train:SetPackedBool(sys,val > 0)
-                --     end
-                -- end
+                if train.TriggerTurbostroiInput then train:TriggerTurbostroiInput(sys,var,val) end
             end
         end
     end
@@ -354,7 +370,7 @@ if not TURBOSTROI then
         local name_len = msg_readu16(msg)
         local name = msg_readdata(msg, name_len)
 
-        train:TriggerInput(name, val)
+        train[sys]:TriggerInput(name, val)
     end
 
     local function turbostroiHandle3(train, msg)
@@ -372,7 +388,7 @@ if not TURBOSTROI then
         local changes = msg_readu16(msg)
 
         for i=1, changes do
-            local wire = msg_readu32(msg)
+            local wire = msg_readfloat(msg)
             local val = msg_readfloat(msg)
 
             if not train.TrainWireWritersID[wire] then train.TrainWireWritersID[wire] = true end
@@ -410,7 +426,11 @@ if not TURBOSTROI then
                 
                 MsgC(color_red, str, "\n")
             else
-                MsgC(color_blue, "UNKNOWN MESSAGE TYPE '" .. typ .. "'")
+                if TS_messageTypes[typ] then
+                    TS_messageTypes[typ](train, msg)
+                else
+                    MsgC(color_blue, "UNKNOWN MESSAGE TYPE '" .. typ .. "'")
+                end
             end
         end
     end
@@ -426,8 +446,9 @@ if not TURBOSTROI then
         for i in next, wires do
             local wire_val = wires[i] or 0
             if wires_cache[i] ~= wire_val then
-                msg_writei32(msg_wire, i)
+                msg_writefloat(msg_wire, i)
                 msg_writefloat(msg_wire, wire_val)
+                
                 wire_changes_num = wire_changes_num + 1
                 wires_cache[i] = wire_val
             end
@@ -519,6 +540,12 @@ end
 local SendMessage = SendMessage
 local CreateMessage = CreateMessage
 local RecvMessage = RecvMessage
+
+local CustomTypes = {}
+
+function RegisterCustomType(num, func)
+    CustomTypes[num] = func
+end
 
 do -- UTILS FUNCTIONS
     function print(...)
@@ -624,7 +651,6 @@ xpcall(function()
     GlobalTrain.TrainWires = {}
     GlobalTrain.WriteTrainWires = {}
 
-    local messageBuffer = {}
     
     function GlobalTrain.LoadSystem(self,a,b,...)
         local name
@@ -736,9 +762,11 @@ xpcall(function()
         self.DeltaTime = (CurrentTime - self.PrevTime)
         self.PrevTime = CurrentTime
 
+
         if self.DeltaTime<=0 then return end
 
         _Time = _Time+self.DeltaTime
+
 
         for i,s in ipairs(self.Schedule) do
             for k,v in ipairs(s) do
@@ -809,7 +837,11 @@ xpcall(function()
                         local var = msg:ReadData(var_len)
                         local val = msg:ReadFloat()
 
-                        GlobalTrain.Systems[sys][var] = val
+                        local sys_tbl = GlobalTrain.Systems[sys]
+                        
+                        if sys_tbl then
+                            GlobalTrain.Systems[sys][var] = val
+                        end
                     end
                 end
             elseif id == 2 then
@@ -821,20 +853,18 @@ xpcall(function()
                 local name_len = msg:ReadUInt16()
                 local name = msg:ReadData(name_len)
 
-                GlobalTrain.Systems[sys]:TriggerInput(name,val)
+                local sys_tbl = GlobalTrain.Systems[sys]
+
+                if sys_tbl then
+                    sys_tbl:TriggerInput(name,val)
+                end
             elseif id == 4 then
                 while true do
-                    local wire = msg:ReadInt32()
+                    local wire = msg:ReadFloat()
                     if wire == 0 then break end
                     local val = msg:ReadFloat()
                     GlobalTrain.TrainWires[wire] = val
                 end
-                -- local num_changes = msg:ReadUInt16()
-                -- for i = 1, num_changes do
-                --     local wire = msg:ReadInt32()
-                --     local val = msg:ReadFloat()
-                --     GlobalTrain.TrainWires[wire] = val
-                -- end
             elseif id == 102 then
                 local mask = msg:ReadUInt32()
                 print("[! " .. TRAIN_ID .. "] Affinity Mask: " .. mask)
@@ -849,14 +879,12 @@ xpcall(function()
 
                     local system_code_len = msg:ReadUInt32()
                     local system_code = msg:ReadData(system_code_len)
-
                     xpcall(loadstring(system_code, system_location), function(err)
                         printError(tostring(err) .. "\n" .. errorStack(2))
                     end)
                 end
 
                 local load_system = msg:ReadUInt16()
-
                 for i = 1, load_system do
                     local name_len = msg:ReadUInt16()
                     local name = msg:ReadData(name_len)
@@ -885,7 +913,11 @@ xpcall(function()
                     printError(tostring(err) .. "\n" .. errorStack(2))
                 end)
             else
-                printError("UNKNOWN MESSAGE TYPE '" .. id .. "'")
+                if CustomTypes[id] then
+                    CustomTypes[id](msg)
+                else
+                    printError("UNKNOWN MESSAGE TYPE '" .. id .. "'")
+                end
             end
         end
 
@@ -898,48 +930,6 @@ xpcall(function()
             end
 
             turbostroiSendSys()
-            -- local changes = {}
-            -- local changes_num = 0
-
-            -- for sys_name,system in pairs(GlobalTrain.Systems) do
-            --     if system.OutputsList and (not system.DontAccelerateSimulation) then
-            --         for _,name in pairs(system.OutputsList) do
-            --             local value = (system[name] or 0)
-                        
-            --             if dataCache[sys_name][name] ~= value then
-            --                 if not changes[sys_name] then changes[sys_name] = {} changes_num = changes_num + 1 end
-            --                 changes[sys_name][name] = value
-            --                 dataCache[sys_name][name] = value
-            --             end
-            --         end
-            --     end
-            -- end
-
-            -- if tableCount(changes) ~= 0 then
-            --     local msg = CreateMessage(4096*2)
-
-            --     msg:WriteUInt8(1)
-            --     msg:WriteUInt16(changes_num)
-            --     for sys_name, vars in pairs(changes) do
-            --         local sys_name_len = #sys_name
-
-            --         msg:WriteUInt16(sys_name_len)
-            --         msg:WriteData(sys_name)
-
-            --         msg:WriteUInt16(tableCount(vars))
-
-            --         for var_name, val in pairs(vars) do
-            --             local var_name_len = #var_name
-
-            --             msg:WriteUInt16(var_name_len)
-            --             msg:WriteData(var_name)
-
-            --             msg:WriteFloat(val)
-            --         end
-            --     end
-
-            --     SendMessage(msg)
-            -- end
         end
 
         do --- WIRE CHANGE SEND
@@ -961,7 +951,7 @@ xpcall(function()
                 msg:WriteUInt16(changes_num)
 
                 for wire, val in pairs(changes) do
-                    msg:WriteInt32(wire)
+                    msg:WriteFloat(wire)
                     msg:WriteFloat(val)
                 end
 
@@ -1005,7 +995,7 @@ xpcall(function()
         
         GlobalTrain.Initialized = true
     end
-
+    
     function Think(gameCurtime, threadCurtime)
         xpcall(TrainThink, errorHandler, gameCurtime, threadCurtime)
     end
