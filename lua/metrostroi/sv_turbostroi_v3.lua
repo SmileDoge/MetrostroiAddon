@@ -69,7 +69,7 @@
 - Msg:ReadFloat() -> f32
 
 - Msg:WriteData(bytes: string) -> void : bytes can contain \0
-- Msg:ReadData() -> string
+- Msg:ReadData(len: i32) -> string
 
 - Msg:Seek(pos: usize) -> void
 - Msg:Tell() -> usize
