@@ -183,12 +183,12 @@ if not TURBOSTROI then
             affinity:WriteUInt32(tonumber(new) or 7)
             SendMessage(affinity, k)
         end
-    end)
+    end, "ts_change_train_cores")
 
     cvars.AddChangeCallback("turbostroi_main_cores", function(name, old, new)
         printTurbostroi("New affinity mask = " .. new)
         Turbostroi.SetAffinityMask(tonumber(new))
-    end)
+    end, "ts_change_main_cores")
     Turbostroi.SetAffinityMask(srcds_mask:GetInt() or 8)
 
     concommand.Add("turbostroi_clear_cache", function(ply)
